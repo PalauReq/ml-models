@@ -6,21 +6,22 @@ Reference: https://towardsdatascience.com/going-beyond-99-mnist-handwritten-digi
 import torch
 from torch import nn
 from torchvision.datasets import MNIST
-from torchvision.transforms import ToTensor
+import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 
 batch_size = 64
 device = "cpu"
-epochs = 5
+epochs = 50
 learning_rate = 1e-3
 
 def main():
-    train_dataset = MNIST("datasets", train=True, download=True, transform=ToTensor())
-    test_dataset = MNIST("datasets", train=False, download=True, transform=ToTensor())
+    transform = transforms.Compose([transforms.Resize((32, 32)), transforms.ToTensor(), transforms.Normalize(0.1307, 0.3081)])
+    train_dataset = MNIST("datasets", train=True, download=True, transform=transform)
+    test_dataset = MNIST("datasets", train=False, download=True, transform=transform)
     train_dataloader= DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     test_dataloader= DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
 
-    model = NeuralNetwork().to(device)
+    model = LeNet5().to(device)
     loss_fn = nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
     
@@ -33,15 +34,15 @@ def main():
     torch.save(model.state_dict(), "model.pth")
     print("Saved PyTorch Model State to model.pth")
 
-    model = NeuralNetwork().to(device)
+    model = LeNet5().to(device)
     model.load_state_dict(torch.load("model.pth"))
 
     model.eval()
-    x, y = test_dataset[0][0], test_dataset[0][1]
+    X, y = next(iter(test_dataloader))
     with torch.no_grad():
-        x = x.to(device)
-        pred = model(x)
-        predicted, actual = pred[0].argmax(0), y
+        X = X.to(device)
+        pred = model(X)
+        predicted, actual = pred[0].argmax(0), y[0]
         print(f'Predicted: "{predicted}", Actual: "{actual}"')
 
 
@@ -51,11 +52,9 @@ def train(dataloader, model, loss_fn, optimizer):
     for batch, (X, y) in enumerate(dataloader):
         X, y = X.to(device), y.to(device)
 
-        # Compute prediction error
         pred = model(X)
         loss = loss_fn(pred, y)
 
-        # Backpropagation
         loss.backward()
         optimizer.step()
         optimizer.zero_grad()
@@ -81,23 +80,27 @@ def test(dataloader, model, loss_fn):
     print(f"Test Error: \n Accuracy: {(100*correct):>0.2f}%, Avg loss: {test_loss:>4f} \n")
 
 
-
-class NeuralNetwork(nn.Module):
+class LeNet5(nn.Module):
     def __init__(self):
         super().__init__()
-        self.flatten = nn.Flatten()
-        self.linear_relu_stack = nn.Sequential(
-            nn.Linear(28*28, 512),
-            nn.ReLU(),
-            nn.Linear(512, 512),
-            nn.ReLU(),
-            nn.Linear(512, 10)
+        self.net = nn.Sequential(
+            nn.Conv2d(1, 6, kernel_size=(5, 5)),
+            nn.AvgPool2d(kernel_size=(2, 2), stride=(2, 2)), # LeCun talks about s2 having 12 trainable parameters. I guess each of the 6 planes has a linear transformation (2 params) applied elementwise.
+            nn.Tanh(), # It should be f(a) = A*tanh(S*a) where A is 1.7159 and S ?
+            nn.Conv2d(6, 16, kernel_size=(5, 5)),
+            # LeCun takls about some kind of dropout mask between c3 and s4
+            nn.AvgPool2d(kernel_size=(2, 2), stride=(2, 2)), # LeCun talks about s2 having 12 trainable parameters. I guess each of the 6 planes has a linear transformation (2 params) applied elementwise.
+            nn.Tanh(), # It should be f(a) = A*tanh(S*a) where A is 1.7159 and S ?
+            nn.Conv2d(16, 120, kernel_size=(5, 5)),
+            nn.Flatten(),
+            nn.Linear(120, 84),
+            nn.Tanh(), # It should be f(a) = A*tanh(S*a) where A is 1.7159 and S ?
+            nn.Linear(84, 10),
+            # The output layer should be composed of Euclidean Radial Basis Function units (RBF)
         )
 
     def forward(self, x):
-        x = self.flatten(x)
-        logits = self.linear_relu_stack(x)
-        return logits
+        return self.net(x)
 
 
 if __name__ == "__main__":

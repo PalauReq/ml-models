@@ -4,6 +4,7 @@ import mcts
 
 import numpy as np
 from tinygrad import Tensor, nn
+from tinygrad.helpers import trange
 
 
 def self_learn(num_iterations: int, num_games: int, num_simulations: int):
@@ -42,54 +43,36 @@ def self_play(f: Model, num_simulations: int, v_resign: float = -1) -> np.ndarra
     # determine the outcome and add z to records
 
     
-def optimize(f: Model, data: np.ndarray) -> Model:
+def optimize(f: ResNet, data, num_steps=1000, batch_size=2048) -> ResNet:
     """
     The batch-size is 32 per worker, for a total mini-batch size of 2,048. Each mini-batch of data
     is sampled uniformly at random from all positions from the most recent 500,000 games of self-play.
     It produces a new checkpoint every 1,000 training steps.
-    """    
-    X_train, Y_train, X_test, Y_test = mnist()
-    print("*** got data")
-
-    model = Model()
-    print("*** got model")
-
-    opt = nn.optim.Adam(nn.state.get_parameters(model))
-    print("*** got optimizer")
-
-    samples = Tensor.randint(getenv("STEPS", 10), getenv("BS", 512), high=X_train.shape[0])
-    X_samp, Y_samp = X_train[samples], Y_train[samples]
-    print("*** got samples")
+    """
+    # TODO Structure data so it works
+    samples = Tensor.randint(num_steps, batch_size, high=x.shape[0])
+    x, pi, v  = data[-500_000, -1][samples]
+    x_test, pi_test, v_test = data[-1]
+    opt = nn.optim.Adam(nn.state.get_parameters(f))
 
     with Tensor.train():
-        # TODO: this shouldn't be a for loop. something like: (contract is still up in the air)
-        """
-        i = UOp.range(samples.shape[0])  # TODO: fix range function on UOp
-        losses = model(X_samp[i]).sparse_categorical_crossentropy(Y_samp[i]).backward().contract(i)
-        opt.schedule_steps(i)
-        """
         losses = []
         for i in range(samples.shape[0]):
-        opt.zero_grad()
-        losses.append(model(X_samp[i]).sparse_categorical_crossentropy(Y_samp[i]).backward())
-        opt.schedule_step()
-        # TODO: this stack currently breaks the "generator" aspect of losses. it probably shouldn't
-        #losses = Tensor.stack(*losses)
-    print("*** scheduled training")
+            opt.zero_grad()
+            p, z = f(x[i])
+            loss = - p.sparse_categorical_crossentropy(pi[i]) + (z - v) ** 2
+            losses.append(loss.backward())
+            opt.schedule_step()
 
-    # evaluate the model
     with Tensor.test():
-        test_acc = ((model(X_test).argmax(axis=1) == Y_test).mean()*100)
-    print("*** scheduled eval")
+        p, z = f(x_test)
+        test_p_loss = p.sparse_categorical_crossentropy(pi_test).mean()
+        test_v_loss = (z - v_test).pow(2).mean()
 
-    # NOTE: there's no kernels run in the scheduling phase
-    assert GlobalCounters.kernel_count == 0, "kernels were run during scheduling!"
-
-    # only actually do anything at the end
-    if getenv("LOSS", 1):
-        for i in (t:=trange(len(losses))): t.set_description(f"loss: {losses[i].item():6.2f}")
-    print(f"test_accuracy: {test_acc.item():5.2f}%")
-
+    for i in (t:=trange(len(losses))): t.set_description(f"loss: {losses[i].item():6.2f}")
+    print(f"test_p_loss: {test_p_loss.item():5.2f}%")
+    print(f"test_v_loss: {test_v_loss.item():5.2f}%")
+    return f
 
 
 class ResNet:

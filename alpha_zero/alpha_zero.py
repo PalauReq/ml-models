@@ -52,24 +52,17 @@ def optimize(f: ResNet, data, num_steps=1000, batch_size=2048, num_train_games=5
     # TODO Structure data so it works
     x, pi, v  = data
     # x_test, pi_test, v_test = data[-num_val_games]
-    samples = Tensor.randint(num_steps, batch_size, high=x.shape[0], device="python")
+    samples = Tensor.randint((num_steps, batch_size), high=x.shape[0])
     x, pi, v = x[samples], pi[samples], v[samples]
     opt = nn.optim.Adam(nn.state.get_parameters(f))
-
-    print(f"x: {x[0].numpy()}")
-    print(f"pi: {pi[0].numpy()}")
-    print(f"v: {v[0].numpy()}")
 
     with Tensor.train():
         losses = []
         for i in range(samples.shape[0]):
             opt.zero_grad()
             p, z = f(x[i])
-            print(f"p: {p.shape}, z: {z.shape}")
-            print(f"pi: {p.numpy()}")
-            print(f"v: {z.numpy()}")
-            loss = ((z - v[i]) ** 2 - p.sparse_categorical_crossentropy(pi[i], reduction="none")).mean()
-            print(f"loss: {loss.item()}")
+            # sparse_categorical_crossentropy expects target of shape (batch_size,) and returns (batch_size,)
+            loss = (p.sparse_categorical_crossentropy(pi[i], reduction="none") + (z.squeeze() - v[i]) ** 2).mean(axis=0)
             losses.append(loss.backward())
             opt.schedule_step()
 
@@ -102,7 +95,7 @@ class ResNet:
             nn.Linear(num_hidden_planes, 1), Tensor.tanh,
             ]
 
-    def __call__(self, x: Tensor) -> Tensor:
+    def __call__(self, x: Tensor) -> tuple[Tensor, Tensor]:
         y = x.sequential(self.blocks)
         return y.sequential(self.policy_head), y.sequential(self.value_head)
 

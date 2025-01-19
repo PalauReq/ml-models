@@ -85,9 +85,10 @@ class TestAlphaZero(unittest.TestCase):
             return states, actions, values
 
 
-        x, pi, v = (Tensor(a) for a in simulate_games(4))
+        x, pi, v = (Tensor(a) for a in simulate_games(40))
+        x_test, pi_test, v_test = (Tensor(a) for a in simulate_games(8))
         f = ResNet((3, 3), 2, 4, 2)
-        _ = optimize(f, (x, pi, v), num_steps=2, batch_size=4)
+        _ = optimize(f, (x, pi, v, x_test, pi_test, v_test), num_steps=40, batch_size=32)
 
 
 if __name__ == "__main__":

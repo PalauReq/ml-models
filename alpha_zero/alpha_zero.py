@@ -43,15 +43,13 @@ from tinygrad.helpers import trange
 #     # determine the outcome and add z to records
 
     
-def optimize(f: ResNet, data, num_steps=1000, batch_size=2048, num_train_games=500_000, num_val_games=1) -> ResNet:
+def optimize(f: ResNet, data, num_steps=1000, batch_size=2048) -> ResNet:
     """
     The batch-size is 32 per worker, for a total mini-batch size of 2,048. Each mini-batch of data
     is sampled uniformly at random from all positions from the most recent 500,000 games of self-play.
     It produces a new checkpoint every 1,000 training steps.
     """
-    # TODO Structure data so it works
-    x, pi, v  = data
-    # x_test, pi_test, v_test = data[-num_val_games]
+    x, pi, v, x_test, pi_test, v_test  = data
     samples = Tensor.randint((num_steps, batch_size), high=x.shape[0])
     x, pi, v = x[samples], pi[samples], v[samples]
     opt = nn.optim.Adam(nn.state.get_parameters(f))
@@ -66,14 +64,12 @@ def optimize(f: ResNet, data, num_steps=1000, batch_size=2048, num_train_games=5
             losses.append(loss.backward())
             opt.schedule_step()
 
-    # with Tensor.test():
-        # p, z = f(x_test)
-        # test_p_loss = p.sparse_categorical_crossentropy(pi_test).mean()
-        # test_v_loss = (z - v_test).pow(2).mean()
+    with Tensor.test():
+        p, z = f(x_test)
+        test_loss = (p.sparse_categorical_crossentropy(pi_test, reduction="none") + (z.squeeze() - v_test) ** 2).mean(axis=0)
 
     for i in (t:=trange(len(losses))): t.set_description(f"loss: {losses[i].item():6.2f}")
-    # print(f"test_p_loss: {test_p_loss.item():5.2f}%")
-    # print(f"test_v_loss: {test_v_loss.item():5.2f}%")
+    print(f"test_loss: {test_loss.item():5.2f}%")
     return f
 
 

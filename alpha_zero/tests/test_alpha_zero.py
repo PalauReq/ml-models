@@ -11,9 +11,9 @@ class TestAlphaZero(unittest.TestCase):
         x = Tensor.randint((1, 17, 19, 19), low=0, high=1)
         network = ResNet()
 
-        p, v = network(x)
+        ps, v = network(x)
 
-        self.assertEqual(p.shape, (1, 362))
+        self.assertEqual(ps.shape, (1, 362))
         self.assertEqual(v.shape, (1, 1))
 
 
@@ -21,25 +21,25 @@ class TestAlphaZero(unittest.TestCase):
         x = Tensor.randint((8, 17, 19, 19), low=0, high=1)
         network = ResNet()
 
-        p, v = network(x)
+        ps, v = network(x)
 
-        self.assertEqual(p.shape, (8, 362))
+        self.assertEqual(ps.shape, (8, 362))
         self.assertEqual(v.shape, (8, 1))
 
 
     def test_optimization_loss_function(self):
         x = Tensor.randint((8, 17, 19, 19), low=0, high=1)
         pi = Tensor.randint((8, ), low=0, high=362)
-        v = Tensor.randint((8, ), low=-1, high=1)
+        z = Tensor.randint((8, ), low=-1, high=1)
         network = ResNet()
 
-        p, z = network(x)
-        loss_policy = p.sparse_categorical_crossentropy(pi, reduction="none")
-        loss_value = (z.squeeze() - v) ** 2
-        loss = (p.sparse_categorical_crossentropy(pi, reduction="none") + (z.squeeze() - v) ** 2)
+        ps, v = network(x)
+        loss_policy = ps.cross_entropy(pi, reduction="none")
+        loss_value = (v.squeeze() - z) ** 2
+        loss = (ps.cross_entropy(pi, reduction="none") + (v.squeeze() - z) ** 2)
 
-        self.assertEqual(p.shape, (8, 362))
-        self.assertEqual(z.shape, (8, 1))
+        self.assertEqual(ps.shape, (8, 362))
+        self.assertEqual(v.shape, (8, 1))
         self.assertEqual(loss_policy.shape, (8, ))
         self.assertEqual(loss_value.shape, (8, ))
         self.assertEqual(loss.shape, (8, ))
